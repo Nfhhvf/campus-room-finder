@@ -45,6 +45,16 @@ Use the numbered menu and press Enter to accept a default. Dates also accept
 You can run another search without reloading the timetables.
 You can also type a date directly at the "Today?" prompt.
 
+After a recommendation, the action menu lets you mark a room occupied and replan,
+view the full timeline or next lesson, choose another plan, save a favorite, or
+start move reminders. Occupied reports apply only to this date during this run;
+you can clear them. Favorites rank otherwise suitable choices without relaxing
+your study or entry limits.
+
+Reminders warn five minutes before a move by default. Keep the reminder view
+open; press Enter to stop. Closing the program stops all reminders. Times follow
+your selected plan, not live occupancy or timetable changes during the session.
+
 Plans prefer fewer moves: at most two for an afternoon/short session. A full day
 (starting before noon, lasting at least six hours and ending at/after 16:00)
 prefers up to three changes; four is a fallback. Moves allow two minutes by default.
@@ -52,7 +62,7 @@ Adjust these in Settings. Every new room must still be entered before 17:00.
 
 First setup asks your usual study end time, minimum stay, maximum wait and move
 time. Settings also controls room-change limits, fewer-moves vs more-study-time
-ranking, result display, animation and
+ranking, favorites, reminder lead time/sound, result display, animation and
 colors. Preferences live in `~/.config/campus-room-finder/preferences.json` and
 survive program updates. Use Restore defaults to reset them. You can open Settings
 without loading timetables with `roomfinder --settings`.

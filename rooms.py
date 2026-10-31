@@ -15,7 +15,8 @@ from timetable_cache import refresh
 from terminal_ui import (Progress, QuitSearch, BackToMenu, ask, choose_mode, choose_time,
                          color, heading, show_results, choose_query_day, parse_day, display_day, show_plans, show_choices, parse_clock)
 
-from study_planner import minutes, move_budget, plan_session, useful_slots
+from study_planner import minutes, recommend
+from study_session import actions
 
 ZONE = ZoneInfo('Europe/Zurich')
 CUTOFF = time(17, 0)
@@ -173,6 +174,7 @@ def main():
             print('SUPSI uses a weekly pattern; dated exceptions may be missing.')
         print('Published lesson gaps only. Room access and unlisted bookings are not verified.\n')
         repeat = guided
+        excluded_by_day = {}
         while True:
             try:
                 mode = args.mode or choose_mode()
@@ -219,61 +221,47 @@ def main():
                 start_min, end_min = minutes(start), minutes(end)
                 explicit_window = mode != 'day' or args.start is not None or args.end is not None
                 minimum = min(min_study, end_min - start_min) if explicit_window else min_study
-                slots = search(data, day, 'day', start, end)
-                useful = useful_slots(slots, start_min, end_min, min_study=minimum)
-                whole = [row for row in useful if row[1] == start and row[2] == end]
+                blocked = excluded_by_day.setdefault(day, set())
+                def get_slots(lower):
+                    window_start = time(lower // 60, lower % 60)
+                    return [row for row in search(data, day, 'day', window_start, end) if row[0] not in blocked]
+                slots = get_slots(start_min)
+                result = recommend(slots, start_min, end_min, prefs, mode=mode, minimum=minimum,
+                                   transfer=transfer, budget=args.max_moves)
                 priority_label = 'fewer moves first' if prefs['priority'] == 'fewer_moves' else 'more study time first'
                 print(f'Practical options / at least {minimum} min per room / {priority_label}')
+                if blocked:
+                    print('Occupied rooms excluded for this date: ' + ', '.join(sorted(blocked)))
+                options = result['options']
                 presentation = {'interactive': repeat and prefs['more_options'] == 'ask',
                                 'all_options': args.all_options or prefs['more_options'] == 'all'}
-
-                def present_rows(rows, title):
-                    show_choices(rows, lambda group: show_results(group, day, start, end, title), **presentation)
-                if whole and mode != 'day':
-                    print(f'Best strategy: stay in {whole[0][0]} until {end:%H:%M}. No waiting or room changes.')
-                    present_rows(whole, 'evening')
+                def render(group):
+                    if group and all(p['moves'] == 0 and p['wait'] == 0 and p.get('complete') for p in group):
+                        rows = [(p['segments'][0][0], time(p['segments'][0][1] // 60, p['segments'][0][1] % 60),
+                                 time(p['segments'][0][2] // 60, p['segments'][0][2] % 60), True) for p in group]
+                        show_results(rows, day, start, end, 'evening')
+                    else:
+                        if group and any(not p.get('complete') for p in group):
+                            print('This option starts later or covers only part of the requested window.')
+                        show_plans(group, preferred=result['preferred'], budget=result['budget'], min_study=minimum)
+                if options:
+                    first = options[0]
+                    if first.get('complete') and first['moves'] == 0:
+                        print(f"Best strategy: stay in {first['segments'][0][0]} until {end:%H:%M}. No moves.")
+                    else:
+                        print('Recommended journey / includes the next room and time for every connection.')
+                    if any(room in prefs['favorites'] for room, _, _ in first['segments']):
+                        print('Your favorites helped choose between otherwise suitable options.')
+                    show_choices(options, render, **presentation)
                 else:
-                    budget, preferred, kind = move_budget(start_min, end_min, afternoon=prefs['afternoon_moves'],
-                                                          preferred=prefs['full_day_preferred'], maximum=prefs['full_day_max'])
-                    if args.max_moves is not None:
-                        budget = args.max_moves
-                        preferred = min(preferred, budget)
-                    plans = []
-                    if not whole:
-                        print(f'{kind}: prefer up to {preferred} changes; maximum {budget}.')
-                        plans = plan_session(slots, start_min, end_min, max_moves=preferred,
-                                             wait=prefs['max_wait'], transfer=transfer, min_study=minimum, priority=prefs['priority'])
-                        if not plans and budget > preferred:
-                            plans = plan_session(slots, start_min, end_min, max_moves=budget,
-                                                 wait=prefs['max_wait'], transfer=transfer, min_study=minimum, priority=prefs['priority'])
-                        preferred_plans = [plan for plan in plans if plan['moves'] <= preferred]
-                        plans = preferred_plans or plans
-                        if plans:
-                            print('Best strategy: follow this complete itinerary; each connection fits both room schedules.')
-                        show_choices(plans, lambda group: show_plans(group, preferred=preferred, budget=budget, min_study=minimum), **presentation)
-                    if mode == 'day':
-                        if not plans:
-                            present_rows(useful, 'day')
-                            if whole:
-                                print(f'Best strategy: {whole[0][0]} covers the whole window without a move.')
-                    elif not plans:
-                        partials = [row for row in useful if minutes(row[1]) - start_min <= prefs['max_wait']]
-                        if partials:
-                            print('The requested session cannot be covered under these limits. Best shorter/later alternative:')
-                            present_rows(partials, 'partial')
-                        else:
-                            print('No useful room within your wait and entry limits. Try another start time or adjust Settings.')
+                    print('No useful itinerary fits your wait, move, minimum-stay and entry limits.')
+                    print('Try another start time, or change your preferences in Settings.')
                 hidden = sum(row[3] and minutes(row[2]) - minutes(row[1]) < minimum for row in slots)
                 if hidden:
                     print(f'Skipped {hidden} gaps shorter than {minimum} min.')
                 if not repeat:
                     return 0
-                print()
-                again = ask('Another search? y/n (b: menu)', 'n', lambda value: {'y': True, 'n': False}[value.lower()],
-                            'Enter y or n.')
-                if not again:
-                    return 0
-                print()
+                actions(data, day, start, end, prefs, result, blocked, get_slots)
             except BackToMenu:
                 args.mode = None
                 print('\nBack to main menu.\n')

@@ -1,6 +1,7 @@
 """Local user preferences, independent of the checkout and timetable cache."""
 import json
 import os
+import re
 from pathlib import Path
 
 from terminal_ui import BackToMenu, ask, color, parse_clock
@@ -8,7 +9,8 @@ from timetable_cache import atomic_write
 
 DEFAULTS = {'study_end': '22:00', 'min_study': 30, 'max_wait': 15, 'move_minutes': 2,
             'afternoon_moves': 2, 'full_day_preferred': 3, 'full_day_max': 4,
-            'more_options': 'ask', 'animation': True, 'colors': True, 'priority': 'fewer_moves'}
+            'more_options': 'ask', 'animation': True, 'colors': True, 'priority': 'fewer_moves',
+            'favorites': [], 'reminder_minutes': 5, 'reminder_sound': False}
 
 
 def location():
@@ -25,7 +27,8 @@ def validate(values):
     merged = {**DEFAULTS, **{k: v for k, v in values.items() if k in DEFAULTS}}
     parse_clock(merged['study_end'])
     bounds = {'min_study': (1, 180), 'max_wait': (0, 60), 'move_minutes': (0, 15),
-              'afternoon_moves': (0, 4), 'full_day_preferred': (0, 4), 'full_day_max': (0, 4)}
+              'afternoon_moves': (0, 4), 'full_day_preferred': (0, 4), 'full_day_max': (0, 4),
+              'reminder_minutes': (0, 30)}
     for key, (low, high) in bounds.items():
         if type(merged[key]) is not int or not low <= merged[key] <= high:
             raise ValueError(f'Invalid preference: {key}')
@@ -35,8 +38,12 @@ def validate(values):
         raise ValueError('Invalid result display preference.')
     if merged['priority'] not in ('fewer_moves', 'more_study'):
         raise ValueError('Invalid recommendation priority.')
-    if any(type(merged[k]) is not bool for k in ('animation', 'colors')):
+    if any(type(merged[k]) is not bool for k in ('animation', 'colors', 'reminder_sound')):
         raise ValueError('Invalid display preferences.')
+    if (not isinstance(merged['favorites'], list) or len(merged['favorites']) > 50
+            or any(not isinstance(r, str) or not re.fullmatch(r'B1\.\d{2}', r) for r in merged['favorites'])):
+        raise ValueError('Favorites must be sector B room IDs, such as B1.01.')
+    merged['favorites'] = sorted(set(merged['favorites']))
     return merged
 
 
@@ -100,24 +107,28 @@ def settings(values, path=None):
         print(f" 10  Colors                      {'On' if current['colors'] else 'Off'}")
         priority = 'Fewer changes' if current['priority'] == 'fewer_moves' else 'More study time'
         print(f' 11  Recommendation priority     {priority}')
+        print(f" 12  Favorite rooms              {', '.join(current['favorites']) or 'None'}")
+        print(f" 13  Move reminder lead time      {current['reminder_minutes']} min")
+        print(f" 14  Reminder sound              {'On' if current['reminder_sound'] else 'Off'}")
         print('  r  Restore defaults\n  b  Main menu\n  q  Quit\n')
         print('The 17:00 room-entry rule is fixed. Changes save immediately.')
         try:
             def selection(value):
-                if value not in [str(n) for n in range(1, 12)] + ['r']:
+                if value not in [str(n) for n in range(1, 15)] + ['r']:
                     raise ValueError('Unknown setting')
                 return value
-            selected = ask('Setting', 'b', selection, 'Choose 1-11, r, b or q.')
+            selected = ask('Setting', 'b', selection, 'Choose 1-14, r, b or q.')
             updated = dict(current)
             if selected == 'r':
                 updated = dict(DEFAULTS)
             elif selected == '1':
                 updated['study_end'] = ask('Study until', current['study_end'],
                                           lambda v: parse_clock(v).strftime('%H:%M'), 'Use HH:MM.')
-            elif selected in ('2', '3', '4', '5', '6', '7'):
+            elif selected in ('2', '3', '4', '5', '6', '7', '13'):
                 key, low, high = {'2': ('min_study', 1, 180), '3': ('max_wait', 0, 60),
                                   '4': ('move_minutes', 0, 15), '5': ('afternoon_moves', 0, 4),
-                                  '6': ('full_day_preferred', 0, 4), '7': ('full_day_max', 0, 4)}[selected]
+                                  '6': ('full_day_preferred', 0, 4), '7': ('full_day_max', 0, 4),
+                                  '13': ('reminder_minutes', 0, 30)}[selected]
                 updated[key] = number('New value', current[key], low, high)
                 if key == 'full_day_preferred':
                     updated['full_day_max'] = max(updated['full_day_max'], updated[key])
@@ -131,8 +142,14 @@ def settings(values, path=None):
                 print('  1 Fewer changes  /  2 More study time (less waiting)')
                 updated['priority'] = ask('Priority', '1',
                                           lambda v: {'1': 'fewer_moves', '2': 'more_study'}[v], 'Choose 1 or 2.')
+            elif selected == '12':
+                def favorite_rooms(value):
+                    rooms = [] if value == '-' else [r.strip().upper() for r in value.split(',')]
+                    return validate({**current, 'favorites': rooms})['favorites']
+                updated['favorites'] = ask('Rooms, comma-separated (- clears)', ', '.join(current['favorites']) or '-',
+                                           favorite_rooms, 'Use B1.01, B1.02, ... or - to clear.')
             else:
-                key = 'animation' if selected == '9' else 'colors'
+                key = {'9': 'animation', '10': 'colors', '14': 'reminder_sound'}[selected]
                 updated[key] = not current[key]
             # Commit to disk before applying in memory, so a failed save never
             # claims a preference will survive the next launch.
