@@ -1,0 +1,18 @@
+{
+  "coverage": {
+    "from": "2026-09-14",
+    "to": "2026-12-18",
+    "supsi_all_years": false,
+    "usi_at_supsi": false
+  },
+  "rooms": [
+    {"id": "A1.04", "campus": "Campus Est", "floor": 1, "sector": "A", "student_use_allowed": false}
+  ],
+  "sources": [
+    {
+      "id": "usi-data-science-year-1-autumn-2026",
+      "url": "https://search.usi.ch/it/offerte-formative/102/bachelor-of-science-in-data-science/piano-orari/61/1/ics",
+      "format": "usi-ics"
+    }
+  ]
+}

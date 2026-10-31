@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "sources": ["FICTIONAL DEMO — not SUPSI or USI data"],
+  "coverage": {"from": "2026-01-01", "to": "2026-12-31", "supsi_all_years": true, "usi_at_supsi": true},
+  "rooms": [
+    {"id": "DEMO-A-1", "campus": "Campus Est", "floor": 1, "sector": "A", "student_use_allowed": true},
+    {"id": "DEMO-B-1", "campus": "Campus Est", "floor": 1, "sector": "B", "student_use_allowed": true}
+  ],
+  "lessons": [
+    {"room": "DEMO-A-1", "date": "2026-10-31", "start": "18:00", "end": "19:00"}
+  ]
+}

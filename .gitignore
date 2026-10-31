@@ -1,0 +1,10 @@
+__pycache__/
+/schedule.json
+.cache/
+/timetable-sources.json
+.venv/
+venv/
+.env
+.env.*
+*.py[cod]
+.DS_Store
