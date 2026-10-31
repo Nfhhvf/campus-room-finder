@@ -8,8 +8,8 @@ Runs in the terminal and combines SUPSI and USI timetables.
 Requires Python 3.11+.
 
 ```sh
-git clone https://github.com/Nfhhvf/Cross-reference-time-tables-.git
-cd Cross-reference-time-tables-
+git clone https://github.com/Nfhhvf/campus-room-finder.git
+cd campus-room-finder
 python3 install.py
 ```
 
