@@ -7,14 +7,15 @@ if __name__ == '__main__':
 import argparse
 import json
 import sys
+import preferences
 from datetime import date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from timetable_cache import refresh
 from terminal_ui import (Progress, QuitSearch, BackToMenu, ask, choose_mode, choose_time,
-                         color, heading, show_results, choose_query_day, parse_day, display_day, show_plans)
+                         color, heading, show_results, choose_query_day, parse_day, display_day, show_plans, show_choices, parse_clock)
 
-from study_planner import minutes, move_budget, opening_soon, plan_session
+from study_planner import minutes, move_budget, plan_session, useful_slots
 
 ZONE = ZoneInfo('Europe/Zurich')
 CUTOFF = time(17, 30)
@@ -83,6 +84,13 @@ def search(data, day, mode, start, end):
         elif mode == 'now':
             slots = [(a, b) for a, b in slots if a == start]
         for a, b in slots:
+            # The interface plans in minutes. Round conservatively so a lesson
+            # ending at 14:30:30 never becomes a recommended 14:30 entry.
+            first = a.hour * 60 + a.minute + bool(a.second or a.microsecond)
+            last = b.hour * 60 + b.minute
+            if first >= last or first >= 24 * 60:
+                continue
+            a, b = time(first // 60, first % 60), time(last // 60, last % 60)
             results.append((room['id'], a, b, a < CUTOFF))
     return results
 
@@ -95,15 +103,31 @@ def main():
     parser.add_argument('--offline', action='store_true', help='Explicitly use saved lessons without checking updates')
     parser.add_argument('--demo', action='store_true', help='Use fictional demonstration data')
     parser.add_argument('--no-update', action='store_true', help='Skip the GitHub code check; still refresh timetables')
+    parser.add_argument('--settings', action='store_true', help='Open local preferences without loading timetables')
+    parser.add_argument('--all-options', action='store_true', help='Show all ranked alternatives without asking')
     parser.add_argument('--mode', choices=['evening', 'now', 'day'])
     parser.add_argument('--date', dest='day', help='Study date as DD-MM-YY')
     parser.add_argument('--max-moves', type=int, choices=range(5), help='Override room-change limit (0-4)')
-    parser.add_argument('--move-minutes', type=int, choices=range(16), default=2, help='Minutes per room change (default: 2)')
+    parser.add_argument('--min-study', type=int, choices=range(1, 181), default=None, help='Override the minimum study block from Settings')
+    parser.add_argument('--move-minutes', type=int, choices=range(16), default=None, help='Override the room-change time from Settings')
     parser.add_argument('--start')
     parser.add_argument('--end')
     args = parser.parse_args()
     try:
+        try:
+            prefs = preferences.load()
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            prefs = dict(preferences.DEFAULTS)
+            print(f'Could not read saved preferences: {exc}. Using defaults; check Settings.')
+        preferences.apply_display(prefs)
         heading()
+        if args.settings:
+            preferences.settings(prefs)
+            return 0
+        guided = sys.stdin.isatty() and not any((args.mode, args.day, args.start, args.end))
+        if guided and not preferences.location().exists():
+            prefs = preferences.first_setup(prefs)
+            preferences.apply_display(prefs)
         if args.demo and (args.data or args.offline):
             raise ValueError('--demo cannot be combined with --data or --offline.')
         if args.data and args.offline:
@@ -135,10 +159,16 @@ def main():
         if data.get('notes'):
             print('SUPSI uses a weekly pattern; dated exceptions may be missing.')
         print('Published lesson gaps only. Room access and unlisted bookings are not verified.\n')
-        repeat = sys.stdin.isatty() and not any((args.mode, args.day, args.start, args.end))
+        repeat = guided
         while True:
             try:
                 mode = args.mode or choose_mode()
+                if mode == 'settings':
+                    prefs = preferences.settings(prefs)
+                    preferences.apply_display(prefs)
+                    continue
+                min_study = prefs['min_study'] if args.min_study is None else args.min_study
+                transfer = prefs['move_minutes'] if args.move_minutes is None else args.move_minutes
                 now = datetime.now(ZONE)
                 today = now.date()
                 current_time = now.time().replace(second=0, microsecond=0, tzinfo=None)
@@ -154,45 +184,75 @@ def main():
                     day = choose_query_day(today, coverage)
                 validate_schedule(data, day)
                 if mode == 'day':
-                    start = clock(args.start) if args.start else time(8, 30)
-                    end = clock(args.end) if args.end else time(22)
+                    start = parse_clock(args.start) if args.start else max(time(8, 30), current_time) if day == today else time(8, 30)
+                    end = parse_clock(args.end) if args.end else parse_clock(prefs['study_end'])
                 else:
                     default_start = current_time if day == today else time(8, 30)
-                    start = clock(args.start) if args.start else choose_time(
+                    start = parse_clock(args.start) if args.start else choose_time(
                         'Study from' if mode == 'evening' else 'Arrival', default_start.strftime('%H:%M'),
                         not_before=current_time if day == today else None)
-                    default_end = '22:00' if start < time(22) else '23:59'
-                    end = clock(args.end) if args.end else choose_time('Study until', default_end, after=start)
+                    default_end = prefs['study_end'] if start < parse_clock(prefs['study_end']) else '23:59'
+                    end = parse_clock(args.end) if args.end else choose_time('Study until', default_end, after=start)
                 if start >= end:
+                    if mode == 'day' and not args.start and not args.end:
+                        if day == today and current_time >= end:
+                            print('Today’s study window has ended. Choose another date or change the end time in Settings.')
+                        else:
+                            print('Daily overview starts at 08:30. Choose a later default end time in Settings.')
+                        if repeat:
+                            raise BackToMenu
+                        return 0
                     raise ValueError('Study end must be later than arrival on the same day.')
+                start_min, end_min = minutes(start), minutes(end)
+                explicit_window = mode != 'day' or args.start is not None or args.end is not None
+                minimum = min(min_study, end_min - start_min) if explicit_window else min_study
                 slots = search(data, day, 'day', start, end)
-                results = search(data, day, mode, start, end)
-                if mode == 'now':
-                    results.sort(key=lambda row: (-minutes(row[2]), row[0]))
-                if mode != 'evening' or results:
-                    show_results(results, day, start, end, mode)
+                useful = useful_slots(slots, start_min, end_min, min_study=minimum)
+                whole = [row for row in useful if row[1] == start and row[2] == end]
+                priority_label = 'fewer moves first' if prefs['priority'] == 'fewer_moves' else 'more study time first'
+                print(f'Practical options / at least {minimum} min per room / {priority_label}')
+                presentation = {'interactive': repeat and prefs['more_options'] == 'ask',
+                                'all_options': args.all_options or prefs['more_options'] == 'all'}
+
+                def present_rows(rows, title):
+                    show_choices(rows, lambda group: show_results(group, day, start, end, title), **presentation)
+                if whole and mode != 'day':
+                    print(f'Best strategy: stay in {whole[0][0]} until {end:%H:%M}. No waiting or room changes.')
+                    present_rows(whole, 'evening')
                 else:
-                    print('\nNo single room covers the session. Checking room-change plans...')
-                if mode != 'day':
-                    budget, preferred, kind = move_budget(minutes(start), minutes(end))
+                    budget, preferred, kind = move_budget(start_min, end_min, afternoon=prefs['afternoon_moves'],
+                                                          preferred=prefs['full_day_preferred'], maximum=prefs['full_day_max'])
                     if args.max_moves is not None:
                         budget = args.max_moves
                         preferred = min(preferred, budget)
-                    if not any(a == start and b == end and entry for _, a, b, entry in results):
+                    plans = []
+                    if not whole:
                         print(f'{kind}: prefer up to {preferred} changes; maximum {budget}.')
-                        plans = plan_session(slots, minutes(start), minutes(end), max_moves=budget,
-                                             wait=15 if mode == 'now' else 0, transfer=args.move_minutes)
-                        show_plans(plans, preferred=preferred, budget=budget)
-                    if mode == 'now':
-                        soon = opening_soon(slots, minutes(start))
-                        best_now = max((minutes(b) for _, _, b, entry in results if entry), default=minutes(start))
-                        soon = [row for row in soon if minutes(row[2]) > best_now]
-                        if soon:
-                            show_results(soon, day, start, end, 'soon')
-                            wait = minutes(soon[0][1]) - minutes(start)
-                            print(f'Tip: waiting {wait} min opens {soon[0][0]} for a longer uninterrupted stay.')
-                        elif results and any(b == end and entry for _, _, b, entry in results):
-                            print('Tip: you can stay through the session without waiting or changing rooms.')
+                        plans = plan_session(slots, start_min, end_min, max_moves=preferred,
+                                             wait=prefs['max_wait'], transfer=transfer, min_study=minimum, priority=prefs['priority'])
+                        if not plans and budget > preferred:
+                            plans = plan_session(slots, start_min, end_min, max_moves=budget,
+                                                 wait=prefs['max_wait'], transfer=transfer, min_study=minimum, priority=prefs['priority'])
+                        preferred_plans = [plan for plan in plans if plan['moves'] <= preferred]
+                        plans = preferred_plans or plans
+                        if plans:
+                            print('Best strategy: follow this complete itinerary; each connection fits both room schedules.')
+                        show_choices(plans, lambda group: show_plans(group, preferred=preferred, budget=budget, min_study=minimum), **presentation)
+                    if mode == 'day':
+                        if not plans:
+                            present_rows(useful, 'day')
+                            if whole:
+                                print(f'Best strategy: {whole[0][0]} covers the whole window without a move.')
+                    elif not plans:
+                        partials = [row for row in useful if minutes(row[1]) - start_min <= prefs['max_wait']]
+                        if partials:
+                            print('The requested session cannot be covered under these limits. Best shorter/later alternative:')
+                            present_rows(partials, 'partial')
+                        else:
+                            print('No useful room within your wait and entry limits. Try another start time or adjust Settings.')
+                hidden = sum(row[3] and minutes(row[2]) - minutes(row[1]) < minimum for row in slots)
+                if hidden:
+                    print(f'Skipped {hidden} gaps shorter than {minimum} min.')
                 if not repeat:
                     return 0
                 print()
@@ -212,6 +272,7 @@ def main():
         print(color(f'Could not search: {exc}', '33'))
         if not args.demo and not args.data and not args.offline:
             print('Try again, or use --offline if you already have saved timetables.')
+            print('Preferences are available without timetable downloads: roomfinder --settings')
         return 1
 
 

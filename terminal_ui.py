@@ -6,6 +6,9 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 
+COLORS_ENABLED = True
+ANIMATION_ENABLED = True
+
 
 class QuitSearch(Exception):
     pass
@@ -16,7 +19,7 @@ class BackToMenu(Exception):
 
 
 def color(text, code):
-    if sys.stdout.isatty() and os.environ.get('TERM') != 'dumb' and 'NO_COLOR' not in os.environ:
+    if COLORS_ENABLED and sys.stdout.isatty() and os.environ.get('TERM') != 'dumb' and 'NO_COLOR' not in os.environ:
         return f'\033[{code}m{text}\033[0m'
     return text
 
@@ -33,7 +36,7 @@ class Progress:
         self.initial = label
         self.stop = threading.Event()
         self.lock = threading.Lock()
-        self.animated = sys.stdout.isatty() and os.environ.get('TERM') != 'dumb'
+        self.animated = ANIMATION_ENABLED and sys.stdout.isatty() and os.environ.get('TERM') != 'dumb'
 
     def __enter__(self):
         self.started = time.monotonic()
@@ -109,9 +112,10 @@ def choose_mode():
     print('  1  Plan my study session')
     print('  2  Find a room at my arrival')
     print('  3  All free periods in a day')
+    print('  4  Settings')
     print('  q  Quit\n')
-    return ask('Choose', '1', lambda value: {'1': 'evening', '2': 'now', '3': 'day'}[value],
-               'Choose 1, 2, 3 or q.', allow_back=False)
+    return ask('Choose', '1', lambda value: {'1': 'evening', '2': 'now', '3': 'day', '4': 'settings'}[value],
+               'Choose 1, 2, 3, 4 or q.', allow_back=False)
 
 
 def choose_day(default, today, coverage):
@@ -127,10 +131,19 @@ def choose_day(default, today, coverage):
 def choose_query_day(today, coverage):
     covered = date.fromisoformat(coverage['from']) <= today <= date.fromisoformat(coverage['to'])
     if covered:
-        use_today = ask(f'Today, {display_day(today)}? y/n', 'y',
-                        lambda value: {'y': True, 'n': False}[value.lower()], 'Enter y or n.')
-        if use_today:
-            return today
+        def parse(value):
+            if value.lower() in ('y', 'yes'):
+                return today
+            if value.lower() in ('n', 'no'):
+                return None
+            chosen = parse_day(value, today)
+            if not date.fromisoformat(coverage['from']) <= chosen <= date.fromisoformat(coverage['to']):
+                raise ValueError('Outside coverage')
+            return chosen
+        chosen = ask(f'Today, {display_day(today)}? y/n or DD-MM-YY', 'y', parse,
+                     'Enter y, n or a date as DD-MM-YY within the published range.')
+        if chosen is not None:
+            return chosen
     else:
         print('Today is outside the published timetable dates. Choose another date.')
     default = min(max(today + timedelta(days=1), date.fromisoformat(coverage['from'])),
@@ -160,15 +173,32 @@ def duration(start, end):
     return f'{hours}h {minutes:02}m' if hours else f'{minutes}m'
 
 
+def show_choices(options, render, *, interactive=False, all_options=False):
+    """Lead with one recommendation; reveal ranked alternatives on request."""
+    if all_options or len(options) <= 1:
+        render(options)
+        return
+    render(options[:1])
+    print(f'\n{len(options) - 1} more ranked options available.')
+    if interactive:
+        more = ask('Show more options? y/n (b: menu)', 'n',
+                   lambda value: {'y': True, 'n': False}[value.lower()], 'Enter y or n.')
+        if more:
+            render(options[1:])
+    else:
+        print('More options: choose Show all in Settings, or use --all-options.')
+
+
 def show_results(results, day, start, end, mode):
-    titles = {'evening': 'Free for your whole session', 'now': 'Free at arrival', 'day': 'Free periods',
+    titles = {'evening': 'Recommended / free for your whole session', 'now': 'Recommended at arrival',
+              'day': 'Useful study periods / longest first', 'partial': 'Shorter or later alternative / not a complete session',
               'soon': 'Worth waiting for / opening within 15 minutes'}
     print('\n' + color(titles[mode], '1;36'))
     print(f'{display_day(day)}  /  {start:%H:%M} - {end:%H:%M}\n')
     if not results:
         print('No matching rooms in this time window.')
-        if mode == 'evening' and start.hour * 60 + start.minute >= 17 * 60 + 30:
-            print('Evening entry requires arrival before 17:30.')
+        if start.hour * 60 + start.minute >= 17 * 60 + 30:
+            print('Room entry requires arrival before 17:30.')
         else:
             print('Try another arrival time or search all daily gaps.')
         return
@@ -191,11 +221,11 @@ def show_results(results, day, start, end, mode):
     print('Until is capped at your search end. Entry follows the 17:30 badge rule.')
 
 
-def show_plans(plans, *, preferred, budget):
+def show_plans(plans, *, preferred, budget, min_study=30):
     from study_planner import clock
     print('\n' + color('Suggested study plans', '1;36'))
     if not plans:
-        print(f'No complete plan found within {budget} room changes and the 17:30 entry cutoff.')
+        print(f'No practical complete plan: at most {budget} changes, at least {min_study} min per room, entry before 17:30.')
         print('Try a shorter session or check daily free periods.')
         return
     good = [plan for plan in plans if plan['moves'] <= preferred]
@@ -208,10 +238,14 @@ def show_plans(plans, *, preferred, budget):
         if plan['wait']:
             label += f" / wait {plan['wait']} min before starting"
         print(color(f'  {index}. {label}', '1'))
+        if plan['wait']:
+            arrival = plan['segments'][0][1] - plan['wait']
+            print(f'     {clock(arrival)} - {clock(arrival + plan["wait"])}  Wait for the first room')
         for j, (room, a, b) in enumerate(plan['segments']):
             print(f'     {clock(a)} - {clock(b)}  {room}')
             if j < changes:
-                print(f"     {plan['transfer']} min to change rooms")
+                next_room, next_entry, _ = plan['segments'][j + 1]
+                print(f'     {clock(b)} - {clock(next_entry)}  Move to {next_room}')
         total = plan['study_minutes']
         print(f'     Study time: {total // 60}h {total % 60:02}m\n')
     print('All room entries are before 17:30. Transfer breaks are included above.')

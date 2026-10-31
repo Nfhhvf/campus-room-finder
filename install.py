@@ -14,6 +14,8 @@ from pathlib import Path
 
 from timetable_cache import refresh
 from terminal_ui import Progress, heading, display_day
+from terminal_ui import QuitSearch
+import preferences
 
 ROOT = Path(__file__).resolve().parent
 
@@ -80,6 +82,10 @@ def main():
         if args.command_only:
             install_command()
             return 0
+        prefs = preferences.load()
+        if sys.stdin.isatty() and not preferences.location().exists():
+            prefs = preferences.first_setup(prefs)
+        preferences.apply_display(prefs)
         print('Downloads the timetables once, then checks for updates on later runs.\n', flush=True)
         config = json.loads(Path(args.config).read_text())
         with Progress('Timetable setup') as progress:
@@ -95,6 +101,9 @@ def main():
         launcher = install_command()
         command = 'roomfinder' if launcher else 'python rooms.py'
         print(f'Without internet: {command} --offline (saved data, not checked for changes)')
+        return 0
+    except (QuitSearch, KeyboardInterrupt, EOFError):
+        print('\nClosed.')
         return 0
     except (ValueError, KeyError, TypeError, OSError) as exc:
         print(f'Setup could not complete: {exc}')

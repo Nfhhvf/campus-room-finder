@@ -29,21 +29,33 @@ roomfinder
 ```
 
 1. **Plan a session:** uses today's date and current time, then asks when you want
-   to start and finish. Shows all rooms covering the session, or ranked room-change
-   plans if none can cover it alone.
+   to start and finish. Recommends a room for the session or a connected room-change plan.
 2. **Arrive and study:** confirms today or another date, asks your arrival and end
-   time, and compares starting immediately with waiting up to 15 minutes.
-3. **Daily overview:** confirms the date and lists gaps from 08:30 to 22:00.
+   time, and compares starting immediately with a short wait (15 minutes by default).
+3. **Daily overview:** confirms the date and recommends useful study periods.
+4. **Settings:** change your preferences; every change is saved locally.
+
+Recommendations favour a room covering the whole session, then practical routes
+with fewer moves or a short wait. Gaps and stops under 30 minutes are excluded
+unless you explicitly request a shorter session. The best option appears first;
+choose whether to see alternatives. Today's daily overview starts from the current time.
 
 Use the numbered menu and press Enter to accept a default. Dates also accept
 **DD-MM-YY**, `today` and `tomorrow`; type `b` to return to the menu or `q` to quit.
 You can run another search without reloading the timetables.
+You can also type a date directly at the "Today?" prompt.
 
 Plans prefer fewer moves: at most two for an afternoon/short session. A full day
 (starting before noon, lasting at least six hours and ending at/after 16:00)
-prefers up to three changes; four is a fallback. Each move allows two minutes,
-shown as a break. Every new room must be entered before 17:30. Use `--max-moves`
-or `--move-minutes` to adjust those limits.
+prefers up to three changes; four is a fallback. Moves allow two minutes by default.
+Adjust these in Settings. Every new room must still be entered before 17:30.
+
+First setup asks your usual study end time, minimum stay, maximum wait and move
+time. Settings also controls room-change limits, fewer-moves vs more-study-time
+ranking, result display, animation and
+colors. Preferences live in `~/.config/campus-room-finder/preferences.json` and
+survive program updates. Use Restore defaults to reset them. You can open Settings
+without loading timetables with `roomfinder --settings`.
 
 Each launch checks GitHub for a newer program version, updates it and restarts
 before refreshing the timetables. Local changes are preserved; automatic code
