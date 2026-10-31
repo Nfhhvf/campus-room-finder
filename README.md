@@ -26,6 +26,10 @@ Choose a date, arrival time and study end time. Find a room free for the whole
 session, see which rooms are free at arrival, or list the day's free periods.
 Evening searches require arrival before 17:30.
 
+Use the numbered menu and press Enter to accept a default. Dates also accept
+`today` and `tomorrow`; type `q` to quit. Results show free periods, duration and
+the entry cutoff. You can run another search without reloading the timetables.
+
 Timetables are checked for updates at every launch. To use saved data without
 checking for changes:
 

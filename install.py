@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from timetable_cache import refresh
+from terminal_ui import Progress, heading
 
 ROOT = Path(__file__).resolve().parent
 
@@ -16,10 +17,11 @@ def main():
     args = parser.parse_args()
     started = time.monotonic()
     try:
-        print('Campus Est · first-time timetable setup', flush=True)
-        print('Downloading on first setup; checking updates if saved data already exists.', flush=True)
+        heading('First-time setup')
+        print('Downloads the timetables once, then checks for updates on later runs.\n', flush=True)
         config = json.loads(Path(args.config).read_text())
-        schedule, status = refresh(config, args.cache, progress=lambda text: print(text, flush=True))
+        with Progress('Timetable setup') as progress:
+            schedule, status = refresh(config, args.cache, progress=progress.update)
         # Validate declared coverage and imported lesson structure before calling
         # setup ready. Import here so its timezone prerequisite is checked too.
         from datetime import date

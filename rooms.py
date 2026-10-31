@@ -1,10 +1,13 @@
 """Terminal classroom availability search. Python 3.11+, no dependencies."""
 import argparse
 import json
+import sys
 from datetime import date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from timetable_cache import refresh
+from terminal_ui import (Progress, QuitSearch, ask, choose_day, choose_mode, choose_time,
+                         color, heading, show_results)
 
 ZONE = ZoneInfo('Europe/Zurich')
 CUTOFF = time(17, 30)
@@ -90,69 +93,71 @@ def main():
     parser.add_argument('--end')
     args = parser.parse_args()
     try:
-        print('Campus Est · floor 1 · sectors A and B · Europe/Zurich')
-        if args.demo:
-            print('DEMO: fictional rooms and lessons. Do not use these results to choose a room.')
+        heading()
         if args.demo and (args.data or args.offline):
             raise ValueError('--demo cannot be combined with --data or --offline.')
         if args.data and args.offline:
-            raise ValueError('--offline applies to the online cache; use --data by itself for a local file.')
-        online_data = None
-        if not args.demo and not args.data:
-            if not Path(args.config).exists():
-                raise ValueError(f'Configuration file not found: {args.config}')
-            config = json.loads(Path(args.config).read_text())
-            print('Using saved lessons (OFFLINE).' if args.offline else 'Discovering and checking SUPSI + USI timetables…', flush=True)
-            online_data, status = refresh(config, args.cache, offline=args.offline,
-                                          progress=lambda message: print(message, flush=True))
-            checked_at = datetime.fromisoformat(status['checked_at']).astimezone(ZONE).strftime('%Y-%m-%d %H:%M:%S %Z')
-            if status['offline']:
-                print(f"OFFLINE — changes have NOT been checked. Last successful check: {checked_at}")
-            else:
-                changed = 'updated' if status['bookings_changed'] else 'unchanged'
-                print(f"Checked {status['checked']} sources; {len(status['changed'])} files refreshed; "
-                      f"lesson list {changed}. Last checked: {checked_at}")
-            summary = online_data.get('summary', {})
-            if summary:
-                print(f"{summary['rooms']} rooms · {summary['usi_programmes']} USI programmes / "
-                      f"{summary['usi_calendars']} calendars · {summary['supsi_rooms']} SUPSI room timetables")
-                print(f"SUPSI published update: {summary['supsi_published_update']}")
-            print(f"Supported dates: {online_data['coverage']['from']} to {online_data['coverage']['to']}")
-        mode = args.mode
-        if mode is None:
-            print('1. Free through my study session\n2. Free at arrival, until next lesson\n3. All free slots in a day')
-            choice = input('Search mode [1]: ').strip() or '1'
-            if choice not in {'1', '2', '3'}:
-                raise ValueError('Choose 1, 2 or 3.')
-            mode = {'1': 'evening', '2': 'now', '3': 'day'}[choice]
-        today = datetime.now(ZONE).date().isoformat()
-        day = date.fromisoformat(args.day or input(f'Date [{today}]: ').strip() or today)
-        start = clock(args.start or input('Arrival / search starts [16:30]: ').strip() or '16:30')
-        end = clock(args.end or input('Study until / search ends [22:00]: ').strip() or '22:00')
-        if start >= end:
-            raise ValueError('End time must be later than start time on the same day.')
-        if online_data is not None:
-            data = validate_schedule(online_data, day)
+            raise ValueError('--offline applies to saved online data; use --data by itself for a local file.')
+        if args.demo or args.data:
+            path = ROOT / 'examples/demo.json' if args.demo else Path(args.data)
+            data = json.loads(path.read_text())
+            print(color('DEMO / Fictional rooms and lessons.' if args.demo else
+                        'LOCAL FILE / Changes have not been checked.', '33'))
         else:
-            path = Path(__file__).parent / 'examples/demo.json' if args.demo else args.data
-            data = load_schedule(path, day)
-            if args.data:
-                print('LOCAL FILE — timetable changes have NOT been checked.')
-        print(f"Imported {len(data['lessons'])} room bookings from {len(data['sources'])} timetables.")
-        for note in data.get('notes', []):
-            print(note)
-        print('Timetable gaps only; unlisted bookings and actual access are not verified.')
-        if start >= CUTOFF:
-            print('Arrival is at/after 17:30: badge entry is unavailable under your stated rule.')
-        results = search(data, day, mode, start, end)
-        for room, a, b, enter in results:
-            access = 'entry before cutoff' if enter else 'entry unavailable after cutoff'
-            print(f'{room:16} {a:%H:%M}–{b:%H:%M}  {access}')
-        if not results:
-            print('No matching timetable gaps found for this search.')
+            config = json.loads(Path(args.config).read_text())
+            if args.offline:
+                data, status = refresh(config, args.cache, offline=True)
+            else:
+                with Progress('Timetable check') as progress:
+                    data, status = refresh(config, args.cache, progress=progress.update)
+            checked = datetime.fromisoformat(status['checked_at']).astimezone(ZONE).strftime('%d %b %H:%M %Z')
+            if status['offline']:
+                print(color(f'OFFLINE / Saved data from {checked}. Changes have not been checked.', '33'))
+            else:
+                changed = 'Lessons updated' if status['bookings_changed'] else 'No lesson changes'
+                print(color(f'{changed} / Checked {checked}', '32'))
+        coverage = data['coverage']
+        validate_schedule(data, date.fromisoformat(coverage['from']))
+        summary = data.get('summary', {})
+        if summary:
+            print(f"{summary['rooms']} rooms / SUPSI + {summary['usi_programmes']} USI programmes")
+        print(f"Dates: {coverage['from']} to {coverage['to']}")
+        if data.get('notes'):
+            print('SUPSI uses a weekly pattern; dated exceptions may be missing.')
+        print('Published lesson gaps only. Room access and unlisted bookings are not verified.\n')
+        repeat = sys.stdin.isatty() and not any((args.mode, args.day, args.start, args.end))
+        while True:
+            mode = args.mode or choose_mode()
+            today = datetime.now(ZONE).date()
+            default_day = min(max(today, date.fromisoformat(coverage['from'])),
+                              date.fromisoformat(coverage['to']))
+            if not args.day and today != default_day:
+                print(f'Today is outside the timetable range. Suggested date: {default_day}.')
+            if not all((args.mode, args.day, args.start, args.end)):
+                print('Enter q at any prompt to leave.')
+            day = date.fromisoformat(args.day) if args.day else choose_day(default_day, today, coverage)
+            start = clock(args.start) if args.start else choose_time('Arrival / from', '16:30')
+            end = clock(args.end) if args.end else choose_time('Study until', '22:00', after=start)
+            if start >= end:
+                raise ValueError('Study end must be later than arrival on the same day.')
+            validate_schedule(data, day)
+            results = search(data, day, mode, start, end)
+            show_results(results, day, start, end, mode)
+            if not repeat:
+                return 0
+            print()
+            again = ask('Another search? y/n', 'n', lambda value: {'y': True, 'n': False}[value.lower()],
+                        'Enter y or n.')
+            if not again:
+                return 0
+            print()
+    except (QuitSearch, KeyboardInterrupt, EOFError):
+        print('\nClosed.')
         return 0
-    except (ValueError, KeyError, TypeError, OSError, EOFError) as exc:
-        print(f'Cannot search: {exc}')
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        print(color(f'Could not search: {exc}', '33'))
+        if not args.demo and not args.data and not args.offline:
+            print('Try again, or use --offline if you already have saved timetables.')
         return 1
 
 
