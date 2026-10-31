@@ -48,10 +48,4 @@ and [USI Informatics](https://www.inf.usi.ch/it/informazioni-pratiche/orari).
 SUPSI publishes a weekly pattern; USI provides dated lessons. Searches stay
 within the supported semester. Unlisted bookings and door access aren't covered.
 
-## Tests
-
-```sh
-python3 -m unittest discover -s tests -v
-```
-
 Maintained by [Nfhhvf](https://github.com/Nfhhvf).
