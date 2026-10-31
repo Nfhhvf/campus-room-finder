@@ -3,6 +3,8 @@ import hashlib
 import json
 import os
 import re
+import ssl
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +69,15 @@ def fetch(url, previous):
             return dict(previous)
         raise RefreshError(f'Timetable HTTP error: {exc.code}') from exc
     except (URLError, OSError, UnicodeError) as exc:
+        if isinstance(getattr(exc, 'reason', exc), ssl.SSLCertVerificationError):
+            if sys.platform == 'darwin':
+                version = f'{sys.version_info.major}.{sys.version_info.minor}'
+                help_text = (f'Open Applications > Python {version} > Install Certificates.command, '
+                             'let it finish, then run setup again. '
+                             'If Python came from Homebrew or a managed installation, repair its CA trust instead.')
+            else:
+                help_text = 'Repair the certificate trust for this Python installation, then retry.'
+            raise RefreshError('Python could not verify the HTTPS certificate. ' + help_text) from exc
         raise RefreshError(f'Timetable download failed: {exc}') from exc
 
 
@@ -230,6 +241,8 @@ def _refresh(config, cache_path, *, previous, offline=False, fetcher=fetch, prog
         from timetable_sources import discover
         try:
             config = discover(read, report)
+        except RefreshError:
+            raise
         except (ValueError, KeyError, TypeError, OSError) as exc:
             raise RefreshError(f'Discovery failed: {exc}. Previous saved lessons were kept unchanged.') from exc
     sources = config['sources']
@@ -253,6 +266,8 @@ def _refresh(config, cache_path, *, previous, offline=False, fetcher=fetch, prog
                     if room in room_ids:
                         result.append({**lesson, 'room': room, 'source': source_id})
             return result
+        except RefreshError:
+            raise
         except (ValueError, KeyError, TypeError, OSError) as exc:
             raise RefreshError(f'{source_id}: {exc}. Previous saved lessons were kept unchanged.') from exc
     report(f'Importing and combining {len(sources)} classroom timetables…')

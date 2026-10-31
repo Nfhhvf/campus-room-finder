@@ -16,6 +16,10 @@ python3 install.py
 Setup downloads and saves the timetables. On systems without timezone data,
 install it with `python3 -m pip install tzdata`.
 
+On macOS, if setup reports `CERTIFICATE_VERIFY_FAILED`, open your Python folder
+under Applications and run **Install Certificates.command**, then retry setup.
+This applies to Python installed from python.org.
+
 ## Use
 
 ```sh
