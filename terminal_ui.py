@@ -197,8 +197,8 @@ def show_results(results, day, start, end, mode):
     print(f'{display_day(day)}  /  {start:%H:%M} - {end:%H:%M}\n')
     if not results:
         print('No matching rooms in this time window.')
-        if start.hour * 60 + start.minute >= 17 * 60 + 30:
-            print('Room entry requires arrival before 17:30.')
+        if start.hour * 60 + start.minute >= 17 * 60:
+            print('Room entry requires arrival before 17:00.')
         else:
             print('Try another arrival time or search all daily gaps.')
         return
@@ -210,7 +210,7 @@ def show_results(results, day, start, end, mode):
         print(f'{"Room":<12} {"From":<7} {"Until":<7} {"Free for":<10} Entry')
         print('-' * 58)
     for room, left, right, entry in results:
-        access = 'Before 17:30' if entry else 'Unavailable'
+        access = 'Before 17:00' if entry else 'Unavailable'
         if compact:
             line = f'{room:<12} {left:%H:%M} - {right:%H:%M}     {access}'
         else:
@@ -218,14 +218,14 @@ def show_results(results, day, start, end, mode):
         print(line if entry else color(line, '33'))
     count = len({r[0] for r in results})
     print(f'\n{count} {"room" if count == 1 else "rooms"} / {len(results)} {"gap" if len(results) == 1 else "gaps"}')
-    print('Until is capped at your search end. Entry follows the 17:30 badge rule.')
+    print('Until is capped at your search end. Entry follows the 17:00 badge rule.')
 
 
 def show_plans(plans, *, preferred, budget, min_study=30):
     from study_planner import clock
     print('\n' + color('Suggested study plans', '1;36'))
     if not plans:
-        print(f'No practical complete plan: at most {budget} changes, at least {min_study} min per room, entry before 17:30.')
+        print(f'No practical complete plan: at most {budget} changes, at least {min_study} min per room, entry before 17:00.')
         print('Try a shorter session or check daily free periods.')
         return
     good = [plan for plan in plans if plan['moves'] <= preferred]
@@ -248,4 +248,4 @@ def show_plans(plans, *, preferred, budget, min_study=30):
                 print(f'     {clock(b)} - {clock(next_entry)}  Move to {next_room}')
         total = plan['study_minutes']
         print(f'     Study time: {total // 60}h {total % 60:02}m\n')
-    print('All room entries are before 17:30. Transfer breaks are included above.')
+    print('All room entries are before 17:00. Transfer breaks are included above.')

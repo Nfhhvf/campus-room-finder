@@ -1,7 +1,7 @@
 """Rank feasible room itineraries with a strict entry cutoff and move budget."""
 from functools import lru_cache
 
-CUTOFF = 17 * 60 + 30
+CUTOFF = 17 * 60
 
 
 def minutes(value):

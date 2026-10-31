@@ -48,7 +48,7 @@ You can also type a date directly at the "Today?" prompt.
 Plans prefer fewer moves: at most two for an afternoon/short session. A full day
 (starting before noon, lasting at least six hours and ending at/after 16:00)
 prefers up to three changes; four is a fallback. Moves allow two minutes by default.
-Adjust these in Settings. Every new room must still be entered before 17:30.
+Adjust these in Settings. Every new room must still be entered before 17:00.
 
 First setup asks your usual study end time, minimum stay, maximum wait and move
 time. Settings also controls room-change limits, fewer-moves vs more-study-time

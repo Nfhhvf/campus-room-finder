@@ -101,7 +101,7 @@ def settings(values, path=None):
         priority = 'Fewer changes' if current['priority'] == 'fewer_moves' else 'More study time'
         print(f' 11  Recommendation priority     {priority}')
         print('  r  Restore defaults\n  b  Main menu\n  q  Quit\n')
-        print('The 17:30 room-entry rule is fixed. Changes save immediately.')
+        print('The 17:00 room-entry rule is fixed. Changes save immediately.')
         try:
             def selection(value):
                 if value not in [str(n) for n in range(1, 12)] + ['r']:

@@ -18,7 +18,7 @@ from terminal_ui import (Progress, QuitSearch, BackToMenu, ask, choose_mode, cho
 from study_planner import minutes, move_budget, plan_session, useful_slots
 
 ZONE = ZoneInfo('Europe/Zurich')
-CUTOFF = time(17, 30)
+CUTOFF = time(17, 0)
 ROOT = Path(__file__).resolve().parent
 
 
