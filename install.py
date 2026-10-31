@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from timetable_cache import refresh
-from terminal_ui import Progress, heading
+from terminal_ui import Progress, heading, display_day
 
 ROOT = Path(__file__).resolve().parent
 
@@ -34,7 +34,7 @@ def main():
         from rooms import validate_schedule
         validate_schedule(schedule, date.fromisoformat(schedule['coverage']['from']))
         print(f"Ready: {len(schedule['rooms'])} rooms, {len(schedule['lessons'])} booking records.")
-        print(f"Supported dates: {schedule['coverage']['from']} to {schedule['coverage']['to']}")
+        print(f"Supported dates: {display_day(schedule['coverage']['from'])} to {display_day(schedule['coverage']['to'])}")
         print(f"Checked {status['checked']} source files in {time.monotonic() - started:.1f}s.")
         print('Start a search: python3 rooms.py')
         print('Without internet: python3 rooms.py --offline (saved data, not checked for changes)')

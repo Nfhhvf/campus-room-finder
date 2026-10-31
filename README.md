@@ -26,13 +26,22 @@ This applies to Python installed from python.org.
 python3 rooms.py
 ```
 
-Choose a date, arrival time and study end time. Find a room free for the whole
-session, see which rooms are free at arrival, or list the day's free periods.
-Evening searches require arrival before 17:30.
+1. **Plan a session:** uses today's date and current time, then asks when you want
+   to start and finish. Shows all rooms covering the session, or ranked room-change
+   plans if none can cover it alone.
+2. **Arrive and study:** confirms today or another date, asks your arrival and end
+   time, and compares starting immediately with waiting up to 15 minutes.
+3. **Daily overview:** confirms the date and lists gaps from 08:30 to 22:00.
 
 Use the numbered menu and press Enter to accept a default. Dates also accept
-`today` and `tomorrow`; type `q` to quit. Results show free periods, duration and
-the entry cutoff. You can run another search without reloading the timetables.
+**DD-MM-YY**, `today` and `tomorrow`; type `q` to quit. You can run another search
+without reloading the timetables.
+
+Plans prefer fewer moves: at most two for an afternoon/short session. A full day
+(starting before noon, lasting at least six hours and ending at/after 16:00)
+prefers up to three changes; four is a fallback. Each move allows two minutes,
+shown as a break. Every new room must be entered before 17:30. Use `--max-moves`
+or `--move-minutes` to adjust those limits.
 
 Each launch checks GitHub for a newer program version, updates it and restarts
 before refreshing the timetables. Local changes are preserved; automatic code

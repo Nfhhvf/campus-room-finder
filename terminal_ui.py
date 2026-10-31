@@ -82,7 +82,16 @@ def ask(label, default, parse, error):
 def parse_day(value, today):
     if value.lower() in ('today', 'tomorrow'):
         return today + timedelta(days=value.lower() == 'tomorrow')
-    return date.fromisoformat(value)
+    try:
+        return datetime.strptime(value, '%d-%m-%y').date()
+    except ValueError:
+        return date.fromisoformat(value)
+
+
+def display_day(value):
+    if isinstance(value, str):
+        value = date.fromisoformat(value)
+    return value.strftime('%d-%m-%y')
 
 
 def parse_clock(value):
@@ -91,8 +100,8 @@ def parse_clock(value):
 
 def choose_mode():
     print(color('What do you need?', '1'))
-    print('  1  A room for my whole study session')
-    print('  2  A room free when I arrive')
+    print('  1  Plan my study session')
+    print('  2  Find a room at my arrival')
     print('  3  All free periods in a day')
     print('  q  Quit\n')
     return ask('Choose', '1', lambda value: {'1': 'evening', '2': 'now', '3': 'day'}[value],
@@ -105,17 +114,38 @@ def choose_day(default, today, coverage):
         if not date.fromisoformat(coverage['from']) <= day <= date.fromisoformat(coverage['to']):
             raise ValueError('Outside coverage')
         return day
-    return ask('Date', default, parse,
-               f"Use YYYY-MM-DD, today or tomorrow, within {coverage['from']} to {coverage['to']}.")
+    return ask('Date (DD-MM-YY)', display_day(default), parse,
+               f"Use DD-MM-YY, today or tomorrow, within {display_day(coverage['from'])} to {display_day(coverage['to'])}.")
 
 
-def choose_time(label, default, *, after=None):
+def choose_query_day(today, coverage):
+    covered = date.fromisoformat(coverage['from']) <= today <= date.fromisoformat(coverage['to'])
+    if covered:
+        use_today = ask(f'Today, {display_day(today)}? y/n', 'y',
+                        lambda value: {'y': True, 'n': False}[value.lower()], 'Enter y or n.')
+        if use_today:
+            return today
+    else:
+        print('Today is outside the published timetable dates. Choose another date.')
+    default = min(max(today + timedelta(days=1), date.fromisoformat(coverage['from'])),
+                  date.fromisoformat(coverage['to']))
+    return choose_day(default, today, coverage)
+
+
+def choose_time(label, default, *, after=None, not_before=None):
     def parse(value):
         result = parse_clock(value)
         if after is not None and result <= after:
             raise ValueError('End must follow start')
+        if not_before is not None and result < not_before:
+            raise ValueError('Arrival is in the past')
         return result
-    return ask(label, default, parse, 'Use HH:MM' + (' and an end later than arrival.' if after else '.'))
+    hint = 'Use HH:MM'
+    if after:
+        hint += ' and an end later than arrival'
+    if not_before:
+        hint += f'; today starts no earlier than {not_before:%H:%M}'
+    return ask(label, default, parse, hint + '.')
 
 
 def duration(start, end):
@@ -125,9 +155,10 @@ def duration(start, end):
 
 
 def show_results(results, day, start, end, mode):
-    titles = {'evening': 'Free for your whole session', 'now': 'Free at arrival', 'day': 'Free periods'}
+    titles = {'evening': 'Free for your whole session', 'now': 'Free at arrival', 'day': 'Free periods',
+              'soon': 'Worth waiting for / opening within 15 minutes'}
     print('\n' + color(titles[mode], '1;36'))
-    print(f'{day:%a %d %b %Y}  /  {start:%H:%M} - {end:%H:%M}\n')
+    print(f'{display_day(day)}  /  {start:%H:%M} - {end:%H:%M}\n')
     if not results:
         print('No matching rooms in this time window.')
         if mode == 'evening' and start.hour * 60 + start.minute >= 17 * 60 + 30:
@@ -152,3 +183,29 @@ def show_results(results, day, start, end, mode):
     count = len({r[0] for r in results})
     print(f'\n{count} {"room" if count == 1 else "rooms"} / {len(results)} {"gap" if len(results) == 1 else "gaps"}')
     print('Until is capped at your search end. Entry follows the 17:30 badge rule.')
+
+
+def show_plans(plans, *, preferred, budget):
+    from study_planner import clock
+    print('\n' + color('Suggested study plans', '1;36'))
+    if not plans:
+        print(f'No complete plan found within {budget} room changes and the 17:30 entry cutoff.')
+        print('Try a shorter session or check daily free periods.')
+        return
+    good = [plan for plan in plans if plan['moves'] <= preferred]
+    plans = good or plans
+    if not good:
+        print(f'Fallback: these plans need {budget} room changes.')
+    for index, plan in enumerate(plans, 1):
+        changes = plan['moves']
+        label = f'{changes} {"change" if changes == 1 else "changes"}'
+        if plan['wait']:
+            label += f" / wait {plan['wait']} min before starting"
+        print(color(f'  {index}. {label}', '1'))
+        for j, (room, a, b) in enumerate(plan['segments']):
+            print(f'     {clock(a)} - {clock(b)}  {room}')
+            if j < changes:
+                print(f"     {plan['transfer']} min to change rooms")
+        total = plan['study_minutes']
+        print(f'     Study time: {total // 60}h {total % 60:02}m\n')
+    print('All room entries are before 17:30. Transfer breaks are included above.')
