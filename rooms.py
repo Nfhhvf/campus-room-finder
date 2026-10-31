@@ -1,4 +1,9 @@
 """Terminal classroom availability search. Python 3.11+, no dependencies."""
+if __name__ == '__main__':
+    import sys
+    from app_updates import before_launch
+    before_launch(__file__, sys.argv)
+
 import argparse
 import json
 import sys
@@ -87,6 +92,7 @@ def main():
     parser.add_argument('--cache', default=str(ROOT / '.cache/timetables.json'))
     parser.add_argument('--offline', action='store_true', help='Explicitly use saved lessons without checking updates')
     parser.add_argument('--demo', action='store_true', help='Use fictional demonstration data')
+    parser.add_argument('--no-update', action='store_true', help='Skip the GitHub code check; still refresh timetables')
     parser.add_argument('--mode', choices=['evening', 'now', 'day'])
     parser.add_argument('--date', dest='day')
     parser.add_argument('--start')

@@ -30,15 +30,19 @@ Use the numbered menu and press Enter to accept a default. Dates also accept
 `today` and `tomorrow`; type `q` to quit. Results show free periods, duration and
 the entry cutoff. You can run another search without reloading the timetables.
 
-Timetables are checked for updates at every launch. To use saved data without
-checking for changes:
+Each launch checks GitHub for a newer program version, updates it and restarts
+before refreshing the timetables. Local changes are preserved; automatic code
+updates only run on a clean `main` branch. If GitHub is unreachable, the installed
+version still opens. Use `--no-update` to skip only the code check.
+
+To use saved timetables without any update checks:
 
 ```sh
 python3 rooms.py --offline
 ```
 
 Try fictional data with `python3 rooms.py --demo`. Run `python3 rooms.py --help`
-for all options.
+for all options. Demo and help commands do not check GitHub.
 
 ## Data
 

@@ -1,4 +1,9 @@
 """Prepare the initial timetable cache. Re-running safely checks for updates."""
+if __name__ == '__main__':
+    import sys
+    from app_updates import before_launch
+    before_launch(__file__, sys.argv)
+
 import argparse
 import json
 import time
@@ -14,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', default=str(ROOT / 'settings.json'))
     parser.add_argument('--cache', default=str(ROOT / '.cache/timetables.json'))
+    parser.add_argument('--no-update', action='store_true', help='Skip the GitHub code check')
     args = parser.parse_args()
     started = time.monotonic()
     try:
