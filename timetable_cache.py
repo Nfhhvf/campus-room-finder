@@ -151,10 +151,47 @@ def signature(config):
     return digest(json.dumps(config, sort_keys=True))
 
 
+def cached_lessons(source, entry):
+    """Reuse parsed lessons when only calendar generation timestamps changed."""
+    body = entry['body']
+    meaningful = re.sub(r'^DTSTAMP:[^\r\n]*\r?\n', '', body, flags=re.M) if source['format'] == 'usi-ics' else body
+    key = signature({'parser_version': 1, 'source': source, 'content': digest(meaningful)})
+    if (entry.get('parsed_key') == key and 'parsed_lessons' in entry
+            and entry.get('parsed_sha256') == signature(entry['parsed_lessons'])):
+        return entry['parsed_lessons']
+    lessons = parse_lessons(source, body)
+    entry.update(parsed_key=key, parsed_lessons=lessons, parsed_sha256=signature(lessons))
+    return lessons
+
+
 def refresh(config, cache_path, *, offline=False, fetcher=fetch, progress=None):
+    """Prefetch known live sources together while discovery checks their membership."""
+    path = Path(cache_path)
+    previous = json.loads(path.read_text()) if path.exists() else None
+    if offline or not previous or config.get('discovery') != 'campus-est':
+        return _refresh(config, cache_path, previous=previous, offline=offline,
+                        fetcher=fetcher, progress=progress)
+    # A bounded pool overlaps directory, calendar and room requests. Errors in a
+    # retired URL are ignored unless discovery still requires that source.
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        pending = {}
+        for old in previous.get('source_cache', {}).values():
+            if digest(old['body']) == old['sha256']:
+                key = (old['source']['url'], old['sha256'])
+                if key not in pending:
+                    pending[key] = pool.submit(fetcher, key[0], old)
+
+        def prefetched(url, old):
+            future = pending.get((url, old['sha256'])) if old else None
+            return future.result() if future else fetcher(url, old)
+
+        return _refresh(config, cache_path, previous=previous,
+                        fetcher=prefetched, progress=progress)
+
+
+def _refresh(config, cache_path, *, previous, offline=False, fetcher=fetch, progress=None):
     """Publish a whole new snapshot only after every configured source succeeds."""
     cache_path = Path(cache_path)
-    previous = json.loads(cache_path.read_text()) if cache_path.exists() else None
     if previous and previous.get('version') != 1:
         raise RefreshError('Unsupported cache version.')
     if offline:
@@ -178,6 +215,10 @@ def refresh(config, cache_path, *, offline=False, fetcher=fetch, progress=None):
             downloaded = fetcher(url, old)
             checksum = digest(downloaded['body'])
             entry = {**downloaded, 'sha256': checksum, 'source': {'url': url}}
+            if old:
+                for field in ('parsed_key', 'parsed_lessons', 'parsed_sha256'):
+                    if field in old:
+                        entry[field] = old[field]
             new_sources[source_id] = entry
             if not old or old['sha256'] != checksum:
                 changed.append(source_id)
@@ -201,9 +242,9 @@ def refresh(config, cache_path, *, offline=False, fetcher=fetch, progress=None):
     def import_source(source):
         source_id = source['id']
         try:
-            body = read(source_id, source['url'])['body']
+            entry = read(source_id, source['url'])
             # Rebuild each source completely, so deletions/cancellations disappear.
-            imported = parse_lessons(source, body)
+            imported = cached_lessons(source, entry)
             result = []
             from timetable_sources import room_locations
             for lesson in imported:

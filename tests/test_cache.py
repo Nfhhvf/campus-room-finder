@@ -2,11 +2,12 @@ import copy
 import json
 import tempfile
 import unittest
+import threading
 from pathlib import Path
 from urllib.error import HTTPError
 from unittest.mock import patch
 
-from timetable_cache import RefreshError, digest, fetch, parse_ics, refresh
+from timetable_cache import RefreshError, cached_lessons, digest, fetch, parse_ics, refresh
 
 
 def lesson(start='16:30', end='18:00'):
@@ -100,6 +101,47 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(headers['If-none-match'], '"v1"')
         self.assertEqual(headers['If-modified-since'], 'yesterday')
 
+    def test_unchanged_sources_reuse_saved_parsed_lessons(self):
+        refresh(self.config, self.path, fetcher=self.download)
+        with patch('timetable_cache.parse_lessons', side_effect=AssertionError('unnecessary parsing')):
+            schedule, status = refresh(self.config, self.path, fetcher=self.download)
+        self.assertEqual(len(schedule['lessons']), 1)
+        self.assertFalse(status['bookings_changed'])
+
+    def test_live_sources_are_rechecked_in_parallel(self):
+        refresh(self.config, self.path, fetcher=self.download)
+        barrier = threading.Barrier(2, timeout=3)
+        threads = set()
+        def parallel_download(url, old):
+            threads.add(threading.get_ident())
+            barrier.wait()
+            return self.download(url, old)
+        def discovery(read, report):
+            for source in self.config['sources']:
+                read(source['id'], source['url'])
+            return self.config
+        with patch('timetable_sources.discover', side_effect=discovery):
+            schedule, status = refresh({'discovery': 'campus-est'}, self.path, fetcher=parallel_download)
+        self.assertEqual(len(threads), 2)
+        self.assertEqual(status['checked'], 2)
+        self.assertEqual(len(schedule['lessons']), 1)
+
+    def test_retired_source_failure_does_not_break_new_discovery(self):
+        refresh(self.config, self.path, fetcher=self.download)
+        def downloading(url, old):
+            if url.endswith('/two'):
+                raise OSError('retired source removed')
+            return self.download(url, old)
+        def discovery(read, report):
+            config = copy.deepcopy(self.config)
+            config['sources'] = config['sources'][:1]
+            read('one', config['sources'][0]['url'])
+            return config
+        with patch('timetable_sources.discover', side_effect=discovery):
+            schedule, status = refresh({'discovery': 'campus-est'}, self.path, fetcher=downloading)
+        self.assertEqual(status['checked'], 1)
+        self.assertEqual(len(schedule['lessons']), 1)
+
 
 class CalendarTests(unittest.TestCase):
     calendar = ('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:test\r\n'
@@ -127,6 +169,23 @@ class CalendarTests(unittest.TestCase):
     def test_html_error_page_is_rejected(self):
         with self.assertRaises(RefreshError):
             parse_ics('<html>Login required</html>')
+
+    def test_generation_timestamp_does_not_force_reimport_but_lesson_change_does(self):
+        source = {'id': 'usi', 'url': 'https://example.com/usi', 'format': 'usi-ics'}
+        entry = {'body': self.calendar.replace('UID:test', 'UID:test\r\nDTSTAMP:20261031T120000Z')}
+        original = cached_lessons(source, entry)
+        entry['body'] = entry['body'].replace('20261031T120000Z', '20261031T120100Z')
+        with patch('timetable_cache.parse_lessons', side_effect=AssertionError('timestamp only')):
+            self.assertEqual(cached_lessons(source, entry), original)
+        entry['body'] = entry['body'].replace('20261031T180000', '20261031T190000')
+        self.assertEqual(cached_lessons(source, entry)[0]['end'], '19:00:00')
+
+    def test_damaged_parsed_cache_is_rebuilt_from_source(self):
+        source = {'id': 'usi', 'url': 'https://example.com/usi', 'format': 'usi-ics'}
+        entry = {'body': self.calendar}
+        cached_lessons(source, entry)
+        entry['parsed_lessons'][0]['room'] = 'DAMAGED'
+        self.assertEqual(cached_lessons(source, entry)[0]['room'], 'A1.04')
 
 
 if __name__ == '__main__':

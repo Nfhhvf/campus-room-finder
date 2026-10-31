@@ -38,6 +38,14 @@ while that lesson is running. Test offline mode only after a successful import.
   confirmed room reservations or confirmed physical access.
 - Limit concurrent downloads and use server cache validators when available.
 
+Use `python3 install.py --cache path/to/new-cache.json` to test first-time setup
+without modifying your normal cache. Run it again with the same path to measure
+a subsequent refresh. A normal search checks for updates even after setup.
+
+If source parsing semantics change, bump `parser_version` in `cached_lessons`
+so saved parsed lessons are rebuilt. Keep tests showing that timestamp-only
+calendar changes reuse lessons while real date/time/room changes invalidate them.
+
 The default live configuration is `settings.json`. A custom explicit source list
 can be passed with `--config path.json`; an incomplete example is included under
 `examples/`. Local cache files and personal configuration stay out of Git.

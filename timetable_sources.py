@@ -151,7 +151,7 @@ def parse_supsi(body, room, first, last, term):
 
 def discover(read, report=lambda message: None):
     """Follow every published Bachelor/Master, semester/year and calendar link."""
-    from timetable_cache import parse_ics
+    from timetable_cache import cached_lessons
     report('Reading the USI programme directory…')
     directory = read('usi-directory', USI)['body']
     programme_links = {}
@@ -194,14 +194,15 @@ def discover(read, report=lambda message: None):
         if len(links) != 1 or urlparse(links[0]).hostname != 'search.usi.ch':
             raise ValueError(f'Cannot identify one USI calendar export for {source_id}.')
         source = {'id': source_id, 'url': links[0], 'format': 'usi-ics'}
-        content = read(source_id, links[0])['body']
+        entry = read(source_id, links[0])
+        content = entry['body']
         name = re.search(r'^X-WR-CALNAME:(.*(?:\r?\n[ \t].*)*)', content, re.M)
         if not name:
             raise ValueError('USI calendar has no semester label.')
         term = re.search(r'\b(SA|SP)\s+(\d{4})', re.sub(r'\r?\n[ \t]', '', name[1]))
         if not term:
             raise ValueError('Unrecognized USI calendar semester.')
-        lessons = parse_ics(content)
+        lessons = cached_lessons(source, entry)
         if not lessons:
             raise ValueError(f'Empty USI calendar {source_id}; cannot establish date coverage.')
         return source, lessons, (term[1], int(term[2])), body

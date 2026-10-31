@@ -37,10 +37,19 @@ database with `python -m pip install tzdata`. Use `python` or `py` in place of
 ```sh
 git clone https://github.com/Nfhhvf/Cross-reference-time-tables-.git
 cd Cross-reference-time-tables-
+python3 install.py
 python3 rooms.py
 ```
 
-Already have the project folder? Run the last command from that folder.
+Run `install.py` once to download, import and save the current timetables. It
+prints a ready message after a successful import. Re-running it safely checks
+for updates without deleting saved data. This is a data setup step; it does not
+install system packages, change your PATH or require administrator access.
+
+After setup, just run `python3 rooms.py` from the project folder. Every launch
+checks for timetable changes and reuses saved lessons. If you skip setup, the
+first normal launch also performs the initial download automatically.
+
 For a quick trial without downloading any timetables:
 
 ```sh
@@ -58,7 +67,10 @@ Each launch discovers and checks the current SUPSI and USI timetables, then asks
 for a search mode, date, arrival time and study end time. The first refresh can
 take a few minutes because it checks all published programme/year pages and
 calendars. Subsequent launches also check every source, using HTTP cache
-validators where supported. All user-facing times use Europe/Zurich.
+validators where supported. Known sources are checked in parallel and unchanged
+lessons are reused without re-parsing. Network/server speed still affects startup;
+offline mode is available when you explicitly want to skip checks. All
+user-facing times use Europe/Zurich.
 
 Modes:
 
@@ -119,6 +131,14 @@ review rather than silently omitting its bookings.
 validators, imported lessons and the latest successful check time are stored in
 `.cache/timetables.json`. ETag and Last-Modified checks avoid downloading unchanged
 sources when the server supports them; otherwise the program compares hashes.
+Parsed source lessons are also cached and checked for corruption before reuse.
+Calendar generation timestamps alone do not trigger another lesson import.
+
+On later launches, a bounded pool of six downloads checks previously known source
+URLs together while discovery verifies the current programme/year membership.
+Removed sources do not block the new semester merely because an old URL stopped
+working. Required-source failures still stop the refresh. Discovery continues to
+follow new links and does not rely on a permanently fixed list.
 
 Every complete refresh rebuilds the lesson list, including deletions, moves and
 cancelled USI events. The cache is replaced atomically after every required
@@ -170,6 +190,7 @@ normal local terminals use their existing internet connection and TLS trust.
 
 ```text
 rooms.py                 Interactive menu, command-line options and gap search
+install.py               First-time timetable download and cache preparation
 timetable_sources.py     USI discovery, room matching and SUPSI grid parser
 timetable_cache.py       Downloads, calendar import and atomic saved snapshots
 settings.json            Default live-discovery configuration
@@ -195,3 +216,9 @@ updates are checked automatically by normal launches and do not require a Git pu
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development and reporting problems,
 and [CHANGELOG.md](CHANGELOG.md) for the initial feature list.
+
+## Planned terminal interface
+
+The current interface uses simple numbered prompts. Future interface work will
+focus on consistent menus, clearer loading feedback and readable result tables.
+Those presentation changes will build on the same import, cache and search logic.
