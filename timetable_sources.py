@@ -67,10 +67,10 @@ def supsi_rooms(navbar):
     result = []
     for index, name in enumerate(names, 1):
         code = name.split()[0]
-        if re.fullmatch(r'[AB]1\.\d{2}', code):
+        if re.fullmatch(r'B1\.\d{2}', code):
             result.append((index, code, name))
     if not result or len({r[1] for r in result}) != len(result):
-        raise ValueError('SUPSI has no usable unique first-floor A/B room list.')
+        raise ValueError('SUPSI has no usable unique first-floor sector B room list.')
     return result
 
 
@@ -236,16 +236,9 @@ def discover(read, report=lambda message: None):
     inventory = {code: {'id': code, 'name': name, 'campus': 'Campus Est', 'floor': 1,
                          'sector': code[0], 'is_classroom': True}
                  for _, code, name in supsi_rooms(nav)}
-    # These room IDs are explicitly described as Campus Est teaching rooms by USI.
-    guides = ' '.join(body for _, _, _, body in calendars)
-    if not all(code in guides for code in ('A1.03', 'A1.04', 'A1.05')):
-        raise ValueError('USI Campus Est room guide is missing or changed.')
-    for code in ('A1.03', 'A1.04', 'A1.05'):
-        inventory.setdefault(code, {'id': code, 'name': code + ' (USI)', 'campus': 'Campus Est',
-                                    'floor': 1, 'sector': 'A', 'is_classroom': True})
     for event in events:
         for code in room_locations(event['room']):
-            if re.fullmatch(r'[AB]1\.\d{2}', code) and code not in inventory:
+            if re.fullmatch(r'B1\.\d{2}', code) and code not in inventory:
                 raise ValueError(f'New room {code} needs inventory confirmation.')
     sources = [source for source, _, _, _ in calendars]
     for index, code, name in supsi_rooms(nav):

@@ -28,7 +28,19 @@ def clock(value):
 
 def load_schedule(path, day):
     data = json.loads(Path(path).read_text())
-    return validate_schedule(data, day)
+    return validate_schedule(scope_schedule(data), day)
+
+
+def scope_schedule(data):
+    """Apply the current scope even to a cache created by an older version."""
+    active = [r for r in data['rooms'] if (r['campus'], r['floor'], r['sector']) == ('Campus Est', 1, 'B')]
+    ids = {r['id'] for r in active}
+    if not active:
+        raise ValueError('No Campus Est first-floor sector B rooms in the loaded timetables.')
+    summary = dict(data.get('summary', {}))
+    if summary:
+        summary.update(rooms=len(active), supsi_rooms=len(active))
+    return {**data, 'rooms': active, 'lessons': [e for e in data['lessons'] if e['room'] in ids], 'summary': summary}
 
 
 def validate_schedule(data, day):
@@ -74,7 +86,7 @@ def search(data, day, mode, start, end):
     results = []
     for room in sorted(data['rooms'], key=lambda r: r['id']):
         if (room['campus'], room['floor'], room['sector']) not in {
-            ('Campus Est', 1, 'A'), ('Campus Est', 1, 'B')
+            ('Campus Est', 1, 'B')
         } or room.get('is_classroom', room.get('student_use_allowed')) is not True:
             continue
         lessons = [e for e in data['lessons'] if e['room'] == room['id'] and e['date'] == day.isoformat()]
@@ -150,6 +162,7 @@ def main():
             else:
                 changed = 'Lessons updated' if status['bookings_changed'] else 'No lesson changes'
                 print(color(f'{changed} / Checked {checked}', '32'))
+        data = scope_schedule(data)
         coverage = data['coverage']
         validate_schedule(data, date.fromisoformat(coverage['from']))
         summary = data.get('summary', {})
