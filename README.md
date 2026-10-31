@@ -13,7 +13,9 @@ cd campus-room-finder
 python3 install.py
 ```
 
-Setup downloads and saves the timetables. On systems without timezone data,
+Setup downloads the timetables and installs the `roomfinder` command for your
+user. Open a new terminal after setup. Keep the project folder in place.
+On systems without timezone data,
 install it with `python3 -m pip install tzdata`.
 
 On macOS, if setup reports `CERTIFICATE_VERIFY_FAILED`, open your Python folder
@@ -23,7 +25,7 @@ This applies to Python installed from python.org.
 ## Use
 
 ```sh
-python3 rooms.py
+roomfinder
 ```
 
 1. **Plan a session:** uses today's date and current time, then asks when you want
@@ -51,11 +53,16 @@ version still opens. Use `--no-update` to skip only the code check.
 To use saved timetables without any update checks:
 
 ```sh
-python3 rooms.py --offline
+roomfinder --offline
 ```
 
-Try fictional data with `python3 rooms.py --demo`. Run `python3 rooms.py --help`
+Try fictional data with `roomfinder --demo`. Run `roomfinder --help`
 for all options. Demo and help commands do not check GitHub.
+
+Already set up? Run `python3 install.py --command-only` once to add the command
+without downloading the timetables again. On macOS/Linux it lives in
+`~/.local/bin`; setup adds that directory to your zsh/bash startup file if needed.
+Running `python3 rooms.py` directly also works.
 
 ## Data
 

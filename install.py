@@ -6,6 +6,9 @@ if __name__ == '__main__':
 
 import argparse
 import json
+import os
+import shlex
+import sys
 import time
 from pathlib import Path
 
@@ -15,15 +18,68 @@ from terminal_ui import Progress, heading, display_day
 ROOT = Path(__file__).resolve().parent
 
 
+def install_command(root=ROOT, *, home=None, shell=None):
+    """Install a per-user launcher and append one PATH entry when necessary."""
+    if os.name == 'nt':
+        print('On Windows, start with: python rooms.py')
+        return None
+    home = Path.home() if home is None else Path(home)
+    directory = home / '.local' / 'bin'
+    launcher = directory / 'roomfinder'
+    marker = '# campus-room-finder launcher'
+    if launcher.is_symlink() or (launcher.exists() and marker not in launcher.read_text()):
+        raise ValueError(f'{launcher} already belongs to another command; it was not changed.')
+    directory.mkdir(parents=True, exist_ok=True)
+    script = (Path(root) / 'rooms.py').resolve()
+    contents = f'#!/bin/sh\n{marker}\nexec {shlex.quote(sys.executable)} {shlex.quote(str(script))} "$@"\n'
+    # Use a replace rather than editing a launcher while another shell reads it.
+    import tempfile
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', dir=directory, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(contents)
+        temporary.chmod(0o755)
+        temporary.replace(launcher)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    shell = Path(shell or os.environ.get('SHELL', '')).name
+    profile = None
+    if str(directory) not in os.environ.get('PATH', '').split(os.pathsep):
+        if shell == 'zsh':
+            profile = Path(os.environ.get('ZDOTDIR') or home) / '.zshrc'
+        elif shell == 'bash':
+            profile = home / ('.bash_profile' if sys.platform == 'darwin' else '.bashrc')
+        if profile is not None:
+            line = f'export PATH={shlex.quote(str(directory))}:"$PATH"'
+            old = profile.read_text() if profile.exists() else ''
+            if line not in old.splitlines():
+                profile.parent.mkdir(parents=True, exist_ok=True)
+                with profile.open('a') as handle:
+                    handle.write('\n# Campus Room Finder\n' + line + '\n')
+    print(f'Command installed: {launcher}')
+    if profile is not None:
+        print(f'Open a new terminal, or run: source {shlex.quote(str(profile))}')
+    elif str(directory) not in os.environ.get('PATH', '').split(os.pathsep):
+        print(f'Add {directory} to your shell PATH to use roomfinder from any folder.')
+    print('Start: roomfinder')
+    return launcher
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', default=str(ROOT / 'settings.json'))
     parser.add_argument('--cache', default=str(ROOT / '.cache/timetables.json'))
     parser.add_argument('--no-update', action='store_true', help='Skip the GitHub code check')
+    parser.add_argument('--command-only', action='store_true', help='Install roomfinder without downloading timetables again')
     args = parser.parse_args()
     started = time.monotonic()
     try:
-        heading('First-time setup')
+        heading('Command setup' if args.command_only else 'First-time setup')
+        if args.command_only:
+            install_command()
+            return 0
         print('Downloads the timetables once, then checks for updates on later runs.\n', flush=True)
         config = json.loads(Path(args.config).read_text())
         with Progress('Timetable setup') as progress:
@@ -36,8 +92,9 @@ def main():
         print(f"Ready: {len(schedule['rooms'])} rooms, {len(schedule['lessons'])} booking records.")
         print(f"Supported dates: {display_day(schedule['coverage']['from'])} to {display_day(schedule['coverage']['to'])}")
         print(f"Checked {status['checked']} source files in {time.monotonic() - started:.1f}s.")
-        print('Start a search: python3 rooms.py')
-        print('Without internet: python3 rooms.py --offline (saved data, not checked for changes)')
+        launcher = install_command()
+        command = 'roomfinder' if launcher else 'python rooms.py'
+        print(f'Without internet: {command} --offline (saved data, not checked for changes)')
         return 0
     except (ValueError, KeyError, TypeError, OSError) as exc:
         print(f'Setup could not complete: {exc}')
