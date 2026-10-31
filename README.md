@@ -36,8 +36,8 @@ roomfinder
 3. **Daily overview:** confirms the date and lists gaps from 08:30 to 22:00.
 
 Use the numbered menu and press Enter to accept a default. Dates also accept
-**DD-MM-YY**, `today` and `tomorrow`; type `q` to quit. You can run another search
-without reloading the timetables.
+**DD-MM-YY**, `today` and `tomorrow`; type `b` to return to the menu or `q` to quit.
+You can run another search without reloading the timetables.
 
 Plans prefer fewer moves: at most two for an afternoon/short session. A full day
 (starting before noon, lasting at least six hours and ending at/after 16:00)

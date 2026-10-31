@@ -11,6 +11,10 @@ class QuitSearch(Exception):
     pass
 
 
+class BackToMenu(Exception):
+    pass
+
+
 def color(text, code):
     if sys.stdout.isatty() and os.environ.get('TERM') != 'dumb' and 'NO_COLOR' not in os.environ:
         return f'\033[{code}m{text}\033[0m'
@@ -68,11 +72,13 @@ class Progress:
                     '32' if kind is None else '33'), flush=True)
 
 
-def ask(label, default, parse, error):
+def ask(label, default, parse, error, *, allow_back=True):
     while True:
         answer = input(f'  {label} [{default}]: ').strip()
         if answer.lower() in ('q', 'quit', 'exit'):
             raise QuitSearch
+        if allow_back and answer.lower() in ('b', 'back', 'menu'):
+            raise BackToMenu
         try:
             return parse(answer or str(default))
         except (ValueError, KeyError):
@@ -105,7 +111,7 @@ def choose_mode():
     print('  3  All free periods in a day')
     print('  q  Quit\n')
     return ask('Choose', '1', lambda value: {'1': 'evening', '2': 'now', '3': 'day'}[value],
-               'Choose 1, 2, 3 or q.')
+               'Choose 1, 2, 3 or q.', allow_back=False)
 
 
 def choose_day(default, today, coverage):
