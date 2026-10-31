@@ -34,14 +34,16 @@ def load_schedule(path, day):
 
 def scope_schedule(data):
     """Apply the current scope even to a cache created by an older version."""
-    active = [r for r in data['rooms'] if (r['campus'], r['floor'], r['sector']) == ('Campus Est', 1, 'B')]
+    active = [r for r in data['rooms'] if r['campus'] == 'Campus Est' and r['floor'] == 1 and r['sector'] in ('B', 'D')]
     ids = {r['id'] for r in active}
     if not active:
-        raise ValueError('No Campus Est first-floor sector B rooms in the loaded timetables.')
+        raise ValueError('No Campus Est first-floor sector B or D rooms in the loaded timetables.')
     summary = dict(data.get('summary', {}))
     if summary:
-        summary.update(rooms=len(active), supsi_rooms=len(active))
-    return {**data, 'rooms': active, 'lessons': [e for e in data['lessons'] if e['room'] in ids], 'summary': summary}
+        summary.update(rooms=len(active), supsi_rooms=sum(not r.get('usi_only', False) for r in active))
+    missing = sorted({'B', 'D'} - {r['sector'] for r in active})
+    return {**data, 'rooms': active, 'lessons': [e for e in data['lessons'] if e['room'] in ids],
+            'summary': summary, 'missing_sectors': missing}
 
 
 def validate_schedule(data, day):
@@ -87,7 +89,7 @@ def search(data, day, mode, start, end):
     results = []
     for room in sorted(data['rooms'], key=lambda r: r['id']):
         if (room['campus'], room['floor'], room['sector']) not in {
-            ('Campus Est', 1, 'B')
+            ('Campus Est', 1, 'B'), ('Campus Est', 1, 'D')
         } or room.get('is_classroom', room.get('student_use_allowed')) is not True:
             continue
         lessons = [e for e in data['lessons'] if e['room'] == room['id'] and e['date'] == day.isoformat()]
@@ -170,6 +172,8 @@ def main():
         if summary:
             print(f"{summary['rooms']} rooms / SUPSI + {summary['usi_programmes']} USI programmes")
         print(f"Dates: {display_day(coverage['from'])} to {display_day(coverage['to'])}")
+        if data['missing_sectors']:
+            print('Saved inventory is missing sector ' + ', '.join(data['missing_sectors']) + '. Refresh online to include it.')
         if data.get('notes'):
             print('SUPSI uses a weekly pattern; dated exceptions may be missing.')
         print('Published lesson gaps only. Room access and unlisted bookings are not verified.\n')

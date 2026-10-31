@@ -40,13 +40,13 @@ def choose_room(data, default):
         if room not in known:
             raise ValueError('Unknown room')
         return room
-    return ask('Room (? lists rooms)', default, parse, 'Enter a published sector B room ID.')
+    return ask('Room (? lists rooms)', default, parse, 'Enter a published sector B or D room ID.')
 
 
 def show_room_details(data, room, day, reference, plan, blocked, prefs):
     info = next(r for r in data['rooms'] if r['id'] == room)
     print('\n' + color(info.get('name', room), '1;36'))
-    print(f'{display_day(day)} / reference time {clock(reference)} / sector B, floor 1')
+    print(f'{display_day(day)} / reference time {clock(reference)} / sector {info["sector"]}, floor 1')
     print('Favorite: ' + ('Yes' if room in prefs.get('favorites', []) else 'No'))
     if room in blocked:
         print('You marked this room occupied; it is excluded for this session date.')

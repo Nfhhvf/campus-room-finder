@@ -27,7 +27,7 @@ def color(text, code):
 def heading(subtitle='Find a room to study in'):
     print('\n' + color('CAMPUS EST / ROOMS', '1;36'))
     print(subtitle)
-    print('Floor 1  /  Sector B  /  Europe/Zurich\n')
+    print('Floor 1  /  Sectors B + D  /  Europe/Zurich\n')
 
 
 class Progress:

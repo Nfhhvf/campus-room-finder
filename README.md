@@ -1,6 +1,6 @@
 # Campus Est Rooms
 
-Find classrooms with no scheduled lessons at Campus Est, floor 1, sector B.
+Find classrooms with no scheduled lessons at Campus Est, floor 1, sectors B and D.
 Runs in the terminal and combines SUPSI and USI timetables.
 
 ## Setup

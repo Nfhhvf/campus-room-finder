@@ -41,8 +41,8 @@ def validate(values):
     if any(type(merged[k]) is not bool for k in ('animation', 'colors', 'reminder_sound')):
         raise ValueError('Invalid display preferences.')
     if (not isinstance(merged['favorites'], list) or len(merged['favorites']) > 50
-            or any(not isinstance(r, str) or not re.fullmatch(r'B1\.\d{2}', r) for r in merged['favorites'])):
-        raise ValueError('Favorites must be sector B room IDs, such as B1.01.')
+            or any(not isinstance(r, str) or not re.fullmatch(r'[BD]1\.\d{2}', r) for r in merged['favorites'])):
+        raise ValueError('Favorites must be sector B/D room IDs, such as B1.01 or D1.13.')
     merged['favorites'] = sorted(set(merged['favorites']))
     return merged
 
@@ -147,7 +147,7 @@ def settings(values, path=None):
                     rooms = [] if value == '-' else [r.strip().upper() for r in value.split(',')]
                     return validate({**current, 'favorites': rooms})['favorites']
                 updated['favorites'] = ask('Rooms, comma-separated (- clears)', ', '.join(current['favorites']) or '-',
-                                           favorite_rooms, 'Use B1.01, B1.02, ... or - to clear.')
+                                           favorite_rooms, 'Use B1.01, D1.13, ... or - to clear.')
             else:
                 key = {'9': 'animation', '10': 'colors', '14': 'reminder_sound'}[selected]
                 updated[key] = not current[key]
